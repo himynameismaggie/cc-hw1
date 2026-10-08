@@ -40,7 +40,7 @@ apigClientFactory.newClient = function (config) {
         config.sessionToken = '';
     }
     if(config.region === undefined) {
-        config.region = 'us-east-2';
+        config.region = 'us-east-1';
     }
     //If defaultContentType is not defined then default to application/json
     if(config.defaultContentType === undefined) {
@@ -53,7 +53,7 @@ apigClientFactory.newClient = function (config) {
 
 
     // extract endpoint and path from url
-    var invokeUrl = 'https://abc123.execute-api.us-east-1.amazonaws.com/v1';
+    var invokeUrl = 'https://melllh9kz0.execute-api.us-east-1.amazonaws.com/prod';
     var endpoint = /(^https?:\/\/[^\/]+)/g.exec(invokeUrl)[1];
     var pathComponent = invokeUrl.substring(endpoint.length);
 
@@ -88,7 +88,7 @@ apigClientFactory.newClient = function (config) {
 
         apiGateway.core.utils.assertParametersDefined(params, ['body'], ['body']);
 
-        var nluPostRequest = {
+        var chatbotPostRequest = {
             verb: 'post'.toUpperCase(),
             path: pathComponent + uritemplate('/chatbot').expand(apiGateway.core.utils.parseParametersToObject(params, [])),
             headers: apiGateway.core.utils.parseParametersToObject(params, []),
@@ -97,7 +97,7 @@ apigClientFactory.newClient = function (config) {
         };
 
 
-        return apiGatewayClient.makeRequest(nluPostRequest, authType, additionalParams, config.apiKey);
+        return apiGatewayClient.makeRequest(chatbotPostRequest, authType, additionalParams, config.apiKey);
     };
 
 
@@ -106,7 +106,7 @@ apigClientFactory.newClient = function (config) {
 
         apiGateway.core.utils.assertParametersDefined(params, [], ['body']);
 
-        var nluOptionsRequest = {
+        var chatbotOptionsRequest = {
             verb: 'options'.toUpperCase(),
             path: pathComponent + uritemplate('/chatbot').expand(apiGateway.core.utils.parseParametersToObject(params, [])),
             headers: apiGateway.core.utils.parseParametersToObject(params, []),
@@ -115,7 +115,7 @@ apigClientFactory.newClient = function (config) {
         };
 
 
-        return apiGatewayClient.makeRequest(nluOptionsRequest, authType, additionalParams, config.apiKey);
+        return apiGatewayClient.makeRequest(chatbotOptionsRequest, authType, additionalParams, config.apiKey);
     };
 
 
