@@ -4,7 +4,7 @@ $(document).ready(function() {
   var $messages = $('.messages-content'),
     d, h, m,
     i = 0;
-
+  let chatSessionId = sessionStorage.getItem("chatSessionId");
   $(window).load(function() {
     $messages.mCustomScrollbar();
     insertResponseMessage('Hi there, I\'m your personal Concierge. How can I help?');
@@ -26,11 +26,11 @@ $(document).ready(function() {
   }
 
   function callChatbotApi(message) {
-    // params, body, additionalParams
     return sdk.chatbotPost({}, {
       messages: [{
-        type: 'unstructured',
+        type: "unstructured",
         unstructured: {
+          id: chatSessionId || "",
           text: message
         }
       }]
@@ -51,7 +51,10 @@ $(document).ready(function() {
       .then((response) => {
         console.log(response);
         var data = response.data;
-
+        if (data.messages?.[0]?.unstructured?.id) {
+          chatSessionId = data.messages[0].unstructured.id;
+          sessionStorage.setItem("chatSessionId", chatSessionId);
+        }
         if (data.messages && data.messages.length > 0) {
           console.log('received ' + data.messages.length + ' messages');
 

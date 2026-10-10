@@ -1,0 +1,15 @@
+{
+  "name": "lf0",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@aws-sdk/client-lex-runtime-v2": "^3.1149.0"
+  }
+}
