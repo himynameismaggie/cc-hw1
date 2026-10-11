@@ -1,6 +1,6 @@
 import {SQSClient, ReceiveMessageCommand, DeleteMessageCommand} from "@aws-sdk/client-sqs";
 import {DynamoDBClient} from "@aws-sdk/client-dynamodb";
-import {DynamoDBDocumentClient, BatchGetCommand} from "@aws-sdk/lib-dynamodb";
+import {DynamoDBDocumentClient, BatchGetCommand, GetCommand, PutCommand} from "@aws-sdk/lib-dynamodb";
 import {SESv2Client, SendEmailCommand} from "@aws-sdk/client-sesv2";
 import { Client } from "@opensearch-project/opensearch";
 import awsSigner from "@opensearch-project/opensearch/aws-v3";
@@ -10,6 +10,7 @@ import { defaultProvider } from "@aws-sdk/credential-provider-node";
 const REGION = process.env.AWS_REGION_NAME || "us-east-1";
 const QUEUE_URL = process.env.QUEUE_URL;
 const TABLE = process.env.DYNAMODB_TABLE || "yelp-restaurants";
+const PREFERENCES_TABLE = process.env.PREFERENCES_TABLE || "dining-user-preferences";
 const OPENSEARCH_ENDPOINT = process.env.OPENSEARCH_ENDPOINT;
 const SES_SENDER = process.env.SES_SENDER_EMAIL;
 
@@ -24,7 +25,6 @@ const dynamo = DynamoDBDocumentClient.from(
 );
 
 const ses = new SESv2Client({ region: REGION });
-
 const credentials = defaultProvider();
 
 const search = new Client({
@@ -45,7 +45,10 @@ async function findRestaurants(cuisine) {
                 function_score: {
                     query: {
                         term: {
-                            Cuisine: cuisine
+                            Cuisine: {
+                                value: cuisine,
+                                case_insensitive: true
+                            }
                         }
                     },
                     random_score: {
@@ -58,9 +61,7 @@ async function findRestaurants(cuisine) {
             _source: ["RestaurantID"]
         }
     });
-
     const hits = response.body.hits?.hits || [];
-
     return [
         ...new Set(
             hits.map(hit => hit._source?.RestaurantID)
@@ -71,10 +72,8 @@ async function findRestaurants(cuisine) {
 
 async function getRestaurantDetails(ids) {
     if (ids.length === 0) return [];
-
     let keys = ids.map(businessId => ({ businessId }));
     const results = [];
-
     for (let attempt = 0; attempt < 5 && keys.length; attempt++) {
         const response = await dynamo.send(
             new BatchGetCommand({
@@ -85,25 +84,90 @@ async function getRestaurantDetails(ids) {
                 }
             })
         );
-
         results.push(...(response.Responses?.[TABLE] || []));
-
         keys = response.UnprocessedKeys?.[TABLE]?.Keys || [];
-
         if (keys.length) {
             await new Promise(resolve =>
                 setTimeout(resolve, 200 * (2 ** attempt))
             );
         }
     }
-
     if (keys.length) {
         throw new Error("DynamoDB BatchGet still has unprocessed keys");
     }
-
     return ids
         .map(id => results.find(r => r.businessId === id))
         .filter(Boolean);
+}
+
+function normalizeLocation(location) {
+    const value = String(location || "").trim().toLowerCase();
+    if (["manhattan", "new york", "new york city", "nyc"].includes(value)) {
+        return "manhattan";
+    }
+    return value;
+}
+
+function normalizeCuisine(cuisine) {
+    return String(cuisine || "").trim().toLowerCase();
+}
+
+async function getPreviousRecommendations(request) {
+    const userId = request.userId || request.sessionId;
+    if (!userId) return null;
+    const response = await dynamo.send(new GetCommand({
+        TableName: PREFERENCES_TABLE,
+        Key: { userId },
+        ConsistentRead: true
+    }));
+
+    const preference = response.Item;
+    if (!preference) return null;
+    const sameLocation =
+        normalizeLocation(preference.lastLocation) ===
+        normalizeLocation(request.location);
+    const sameCuisine =
+        normalizeCuisine(preference.lastCuisine) ===
+        normalizeCuisine(request.cuisine);
+    if (
+        !sameLocation ||
+        !sameCuisine ||
+        !Array.isArray(preference.lastRestaurantIds) ||
+        preference.lastRestaurantIds.length === 0
+    ) {
+        return null;
+    }
+    return preference.lastRestaurantIds;
+}
+
+async function saveRecommendations(request, restaurants) {
+    const userId = request.userId || request.sessionId;
+
+    if (!userId) {
+        console.warn("Skipping preferences: missing userId");
+        return;
+    }
+    const restaurantIds = restaurants
+        .map(restaurant => restaurant.businessId)
+        .filter(Boolean);
+
+    if (restaurantIds.length === 0) {
+        throw new Error("Cannot save preferences without restaurant IDs");
+    }
+    await dynamo.send(new PutCommand({
+        TableName: PREFERENCES_TABLE,
+        Item: {
+            userId,
+            lastLocation: normalizeLocation(request.location),
+            lastCuisine: normalizeCuisine(request.cuisine),
+            lastRestaurantIds: restaurantIds,
+            updatedAt: new Date().toISOString()
+        }
+    }));
+    console.log("Preferences saved", {
+        userId,
+        restaurantCount: restaurantIds.length
+    });
 }
 
 function buildEmail(request, restaurants) {
@@ -168,6 +232,7 @@ async function sendEmail(recipient, subject, text) {
     }));
 }
 
+
 async function processMessage(message) {
     const request = JSON.parse(message.Body);
 
@@ -196,44 +261,72 @@ async function processMessage(message) {
 
     console.log("Processing dining request", {
         requestId: request.requestId,
-        cuisine: request.cuisine
+        cuisine: request.cuisine,
+        reusePrevious: request.reusePrevious === true
     });
 
-    const ids = await findRestaurants(request.cuisine);
+    let restaurants = [];
+    let reused = false;
 
-    if (ids.length === 0) {
-        throw new Error(
-            `No restaurants found for cuisine: ${request.cuisine}`
-        );
+    if (request.reusePrevious === true) {
+        const previousIds = await getPreviousRecommendations(request);
+        if (previousIds?.length) {
+            const previousRestaurants =
+                await getRestaurantDetails(previousIds);
+            if (previousRestaurants.length === previousIds.length) {
+                restaurants = previousRestaurants;
+                reused = true;
+            } else {
+                console.warn(
+                    "Some previous restaurants are unavailable; generating new ones"
+                );
+            }
+        } else {
+            console.warn(
+                "No matching saved preferences; generating new recommendations"
+            );
+        }
     }
 
-    const restaurants = await getRestaurantDetails(ids);
-
-    if (restaurants.length === 0) {
-        throw new Error(
-            "OpenSearch IDs could not be found in DynamoDB"
-        );
+    if (!reused) {
+        const ids = await findRestaurants(request.cuisine);
+        if (ids.length === 0) {
+            throw new Error(
+                `No restaurants found for cuisine: ${request.cuisine}`
+            );
+        }
+        restaurants = await getRestaurantDetails(ids);
+        if (restaurants.length === 0) {
+            throw new Error(
+                "OpenSearch IDs could not be found in DynamoDB"
+            );
+        }
     }
 
     const email = buildEmail(request, restaurants);
-
     const result = await sendEmail(
         request.email,
         email.subject,
         email.text
     );
-
     console.log("SES accepted email", {
         requestId: request.requestId,
-        messageId: result.MessageId
+        messageId: result.MessageId,
+        reused
     });
 
-    // delete only after SES has accepted the email.
+    try {
+        await saveRecommendations(request, restaurants);
+    } catch (error) {
+        console.error("Failed to save preferences", {
+            requestId: request.requestId,
+            error: error.message
+        });
+    }
     await sqs.send(new DeleteMessageCommand({
         QueueUrl: QUEUE_URL,
         ReceiptHandle: message.ReceiptHandle
     }));
-
     return result.MessageId;
 }
 
@@ -251,9 +344,7 @@ export const handler = async () => {
     );
 
     const messages = response.Messages || [];
-
     console.log(`Received ${messages.length} SQS messages`);
-
     let sent = 0;
     let failed = 0;
 

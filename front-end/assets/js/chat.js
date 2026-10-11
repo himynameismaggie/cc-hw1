@@ -4,7 +4,9 @@ $(document).ready(function() {
   var $messages = $('.messages-content'),
     d, h, m,
     i = 0;
-  let chatSessionId = sessionStorage.getItem("chatSessionId");
+
+  let chatSessionId = localStorage.getItem("chatSessionId");
+
   $(window).load(function() {
     $messages.mCustomScrollbar();
     insertResponseMessage('Hi there, I\'m your personal Concierge. How can I help?');
@@ -53,7 +55,7 @@ $(document).ready(function() {
         var data = response.data;
         if (data.messages?.[0]?.unstructured?.id) {
           chatSessionId = data.messages[0].unstructured.id;
-          sessionStorage.setItem("chatSessionId", chatSessionId);
+          localStorage.setItem("chatSessionId", chatSessionId);
         }
         if (data.messages && data.messages.length > 0) {
           console.log('received ' + data.messages.length + ' messages');
