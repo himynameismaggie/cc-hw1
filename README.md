@@ -28,7 +28,7 @@ EventBridge Scheduler invokes LF2 every minute to process queued requests.
 - AWS Lambda — LF0, LF1, LF2
 - Amazon Lex V2 — Conversational interface
 - Amazon SQS — Dining request queue
-- Amazon DynamoDB — Restaurant data
+- Amazon DynamoDB — Restaurant data(obtained through yelp api with import script inside the other-scripts dir)
 - Amazon OpenSearch Service — Cuisine-based restaurant lookup
 - Amazon SES — Recommendation emails
 - Amazon EventBridge Scheduler — Periodic LF2 invocation
@@ -51,7 +51,7 @@ The frontend is hosted from the contents of `frontend/`. Lambda functions use No
 
 External packages can be installed in each Lambda directory using `npm ci`, where a lockfile is provided.
 
-The application requires environment-specific configuration for Lex, SQS, DynamoDB, OpenSearch, and SES. API keys and AWS credentials are intentionally excluded from this repository.
+The application requires environment-specific configuration for Lex, SQS, DynamoDB, OpenSearch, and SES. API keys(yelp) and AWS credentials are not in this repository.
 
 ## Live Application
 
