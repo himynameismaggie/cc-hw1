@@ -1,5 +1,5 @@
 .DS_Store
-other-scripts/yelp-importer/.env
+.env
 node_modules/
 *.log
 .idea/
