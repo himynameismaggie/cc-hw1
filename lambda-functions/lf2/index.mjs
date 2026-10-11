@@ -45,7 +45,10 @@ async function findRestaurants(cuisine) {
                 function_score: {
                     query: {
                         term: {
-                            Cuisine: cuisine
+                            Cuisine: {
+                                value: cuisine,
+                                case_insensitive: true
+                            }
                         }
                     },
                     random_score: {

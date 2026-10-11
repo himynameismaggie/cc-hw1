@@ -2,3 +2,4 @@
 other-scripts/yelp-importer/.env
 node_modules/
 *.log
+.idea/
