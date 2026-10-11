@@ -57,6 +57,13 @@ The application requires environment-specific configuration for Lex, SQS, Dynamo
 
 S3 website: http://dining-concierge-mgh3128.s3-website-us-east-1.amazonaws.com
 
-## Demonstration
+Demo video: _(Will be added after all resources have been taken down)
 
-Demo video: [INSERT LINK IF APPLICABLE]
+### Extra Credit Persistent Restaurant Recommendations (How It Works)
+
+1. The frontend stores a persistent session ID in browser localStorage.
+2. LF1 uses the session ID to retrieve the user's previous search from DynamoDB.
+3. When the user requests the same location and cuisine, Lex asks whether they want the same recommendations as before.
+4. If the user answers Yes, LF2 retrieves the previously recommended restaurant IDs and sends the same recommendations.
+5. If the user answers No, LF2 searches OpenSearch for a new set of restaurants.
+6. After SES accepts the recommendation email, LF2 saves the latest restaurant IDs to DynamoDB.
